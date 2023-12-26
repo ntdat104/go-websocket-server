@@ -14,9 +14,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	var (
 		upgrader                  = websocket.Upgrader{}
 		conn                      *websocket.Conn
-		requestMessage            models.WebSocketMessage
+		requestMessage            models.RequestMessage
 		clientCrytoConn           *websocket.Conn
+		clientStockConn           *websocket.Conn
 		cryptoRequestMessageQueue = make(chan []byte, 10)
+		stockRequestMessageQueue = make(chan []byte, 10)
 		responseMessageQueue      = make(chan []byte, 10)
 	)
 
@@ -54,14 +56,28 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		// Kiểm tra requestMessage.Type == CRYPTO | STOCK
 		switch {
 		case requestMessage.Type == "CRYPTO":
-			cryptoMessage, err := json.Marshal(models.WebSocketCryptoSendMessage{Method: requestMessage.Method, Params: requestMessage.Params, Id: rand.Int()})
+			cryptoMessage, err := json.Marshal(models.CryptoMessage{
+				Method: requestMessage.Method, 
+				Params: requestMessage.Params, 
+				Id: rand.Int(),
+			})
 			if err != nil {
 				log.Println("Error encoding JSON:", err)
 				break
 			}
 			cryptoRequestMessageQueue <- cryptoMessage
 		case requestMessage.Type == "STOCK":
-			break
+			stockMessage, err := json.Marshal(models.StockMessage{
+				Type: "sub",
+				Topic: "stockRealtimeByListV2",
+				Variables: requestMessage.Params,
+				Component: "priceTableEquities",
+			})
+			if err != nil {
+				log.Println("Error encoding JSON:", err)
+				break
+			}
+			stockRequestMessageQueue <- stockMessage
 		}
 
 		// Nếu có msg trong responseMessageQueue thì trả về cho client
@@ -116,11 +132,48 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 		}
+
+		// Nếu requestMessage.Type == STOCK
+		if requestMessage.Type == "STOCK" {
+
+			// Nếu chưa khởi tạo connection tới SSI thì khởi tạo
+			if clientStockConn == nil {
+				log.Println("Create a connection to wss://iboard-pushstream.ssi.com.vn/realtime")
+				clientStockConn, _, err = websocket.DefaultDialer.Dial("wss://iboard-pushstream.ssi.com.vn/realtime", nil)
+				if err != nil {
+					log.Println("Error connecting to SSI WebSocket:", err)
+					break
+				}
+			}
+
+			// Nếu có msg trong stockRequestMessageQueue thì bắn msg cho SSI
+			go func() {
+				for msg := range stockRequestMessageQueue {
+					if err := clientStockConn.WriteMessage(websocket.TextMessage, msg); err != nil {
+						log.Println("Error sending message to SSI WebSocket:", err)
+						break
+					}
+				}
+			}()
+
+			// Nếu SSI có trả về message thì đẩy message vào responseMessageQueue
+			go func() {
+				for {
+					_, message, err := clientStockConn.ReadMessage()
+					if err != nil {
+						log.Println("Error reading from SSI WebSocket:", err)
+						break
+					}
+					log.Printf("value: %v", message)
+					// responseMessageQueue <- message
+				}
+			}()
+		}
 	}
 }
 
 func main() {
 	http.HandleFunc("/ws", handleWebSocket)
-	log.Println("Websocket server started on: http://localhost:8080/ws")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Println("Websocket server started on: http://localhost:8888/ws")
+	log.Fatal(http.ListenAndServe(":8888", nil))
 }

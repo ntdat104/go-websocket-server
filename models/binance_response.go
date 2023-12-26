@@ -1,17 +1,5 @@
 package models
 
-type WebSocketMessage struct {
-	Type   string   `json:"type"`
-	Method string   `json:"method"`
-	Params []string `json:"params"`
-}
-
-type WebSocketCryptoSendMessage struct {
-	Method string   `json:"method"`
-	Params []string `json:"params"`
-	Id     int      `json:"id"`
-}
-
 type BinanceResponse struct {
 	Id     int    `json:"id"`
 	Result string `json:"result"`
