@@ -2,21 +2,17 @@ package clients
 
 import (
 	"encoding/json"
+	"go-websocket-server/data"
 	"go-websocket-server/models"
-	"go-websocket-server/utils"
 	"log"
 
 	"github.com/gorilla/websocket"
 )
 
-// BinanceClient struct to hold WebSocket connection
 type BinanceClient struct {
-	Conn    *websocket.Conn
-	params  utils.HashSet
-	session map[*websocket.Conn][]string
+	Conn *websocket.Conn
 }
 
-// NewBinanceClient creates a new BinanceClient instance
 func NewBinanceClient() (*BinanceClient, error) {
 	connection_url := "wss://stream.binance.com/stream"
 	conn, _, err := websocket.DefaultDialer.Dial(connection_url, nil)
@@ -25,27 +21,27 @@ func NewBinanceClient() (*BinanceClient, error) {
 	}
 	log.Println("Binance socket is connected!")
 	return &BinanceClient{
-		Conn:    conn,
-		params:  make(utils.HashSet),
-		session: make(map[*websocket.Conn][]string),
+		Conn: conn,
 	}, nil
 }
 
-// Close closes the WebSocket connection
 func (bc *BinanceClient) Close() error {
 	return bc.Conn.Close()
 }
 
-// ReadMessage reads a message from the WebSocket connection
-func (bc *BinanceClient) ReadMessage() ([]byte, error) {
+func (bc *BinanceClient) ReadMessage() (*data.BinanceKlineData, error) {
 	_, message, err := bc.Conn.ReadMessage()
 	if err != nil {
 		return nil, err
 	}
-	return message, nil
+	var binnace_data data.BinanceKlineData
+	if err := json.Unmarshal(message, &binnace_data); err != nil {
+		return nil, err
+	}
+	return &binnace_data, nil
 }
 
-func (bc *BinanceClient) SendMessage(conn *websocket.Conn, request models.BinanceRequest) {
+func (bc *BinanceClient) SendMessage(request models.BinanceRequest) {
 	data, err := json.Marshal(request)
 	if err != nil {
 		log.Println(err)

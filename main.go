@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
+func handleWebSocket(cm *ConnectionManager, bc *clients.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			upgrader       = websocket.Upgrader{}
@@ -26,8 +26,13 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 			return
 		}
 
+		cm.AddConnection(conn)
+
 		// Đóng websocket khi xong
-		defer conn.Close()
+		defer func() {
+			cm.RemoveConnection(conn)
+			conn.Close()
+		}()
 
 		for {
 			// Đọc message từ client -> websocket server
@@ -51,7 +56,7 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 					Params: requestMessage.Params,
 					Id:     rand.Int(),
 				}
-				bc.SendMessage(conn, bcRequest)
+				bc.SendMessage(bcRequest)
 			}
 
 			go func() {
@@ -61,7 +66,12 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 						log.Println("Error reading from Binance WebSocket:", err)
 						break
 					}
-					if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+					messageByte, errMarshal := json.Marshal(message)
+					if errMarshal != nil {
+						log.Println("Error reading from Binance WebSocket:", err)
+						break
+					}
+					if err := conn.WriteMessage(websocket.TextMessage, messageByte); err != nil {
 						log.Println("Error write message from Binance to Client", err)
 						break
 					}
@@ -72,12 +82,14 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 }
 
 func main() {
+	cm := NewConnectionManager()
+
 	bc, err := clients.NewBinanceClient()
 	if err != nil {
 		log.Println("Fail to connect Binance")
 	}
 
-	http.HandleFunc("/ws", handleWebSocket(bc))
+	http.HandleFunc("/ws", handleWebSocket(cm, bc))
 	log.Println("Websocket server started on: http://localhost:8888/ws")
 	log.Fatal(http.ListenAndServe(":8888", nil))
 }
