@@ -31,7 +31,7 @@ Step 4: Send message to subcribe BNB & SOL
 Step 5: Send message to unsubcribe BTC & ETH
 ```json
 {
-  "method": "SUBSCRIBE",
+  "method": "UNSUBSCRIBE",
   "type": "CRYPTO",
   "params": [
     "btcusdt@kline_15m",
