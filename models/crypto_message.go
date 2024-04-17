@@ -1,6 +1,6 @@
 package models
 
-type CryptoMessage struct {
+type BinanceRequest struct {
 	Method string   `json:"method"`
 	Params []string `json:"params"`
 	Id     int      `json:"id"`
