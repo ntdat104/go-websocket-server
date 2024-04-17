@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func handleWebSocket(cm *ConnectionManager, bc *clients.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
+func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
 			upgrader       = websocket.Upgrader{}
@@ -19,36 +19,33 @@ func handleWebSocket(cm *ConnectionManager, bc *clients.BinanceClient) func(w ht
 			requestMessage models.RequestMessage
 		)
 
-		// Khởi tạo websocket
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println("Error upgrading to WebSocket:", err)
 			return
 		}
 
-		cm.AddConnection(conn)
-
-		// Đóng websocket khi xong
 		defer func() {
-			cm.RemoveConnection(conn)
+			bc.CloseConn(conn)
 			conn.Close()
 		}()
 
 		for {
-			// Đọc message từ client -> websocket server
 			_, p, err := conn.ReadMessage()
 			if err != nil {
-				log.Println("Error reading message:", err)
-				return
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+					log.Println("WebSocket closed by client:", err)
+				} else {
+					log.Println("Error reading message:", err)
+				}
+				break
 			}
 
-			// Convert dữ liệu đọc binary -> json, gán vào địa chỉ của requestMessage
 			if err := json.Unmarshal(p, &requestMessage); err != nil {
 				log.Println("Error decoding JSON:", err)
 				continue
 			}
 
-			// Kiểm tra requestMessage.Type == CRYPTO | STOCK
 			switch {
 			case requestMessage.Type == "CRYPTO":
 				bcRequest := models.BinanceRequest{
@@ -56,24 +53,15 @@ func handleWebSocket(cm *ConnectionManager, bc *clients.BinanceClient) func(w ht
 					Params: requestMessage.Params,
 					Id:     rand.Int(),
 				}
-				bc.SendMessage(bcRequest)
+				bc.SendMessage(conn, bcRequest)
 			}
 
 			go func() {
 				for {
-					message, err := bc.ReadMessage()
-					if err != nil {
-						log.Println("Error reading from Binance WebSocket:", err)
-						break
-					}
-					messageByte, errMarshal := json.Marshal(message)
-					if errMarshal != nil {
-						log.Println("Error reading from Binance WebSocket:", err)
-						break
-					}
-					if err := conn.WriteMessage(websocket.TextMessage, messageByte); err != nil {
-						log.Println("Error write message from Binance to Client", err)
-						break
+					if err := bc.ReadMessage(); err != nil {
+						log.Println("Error reading message from Binance client:", err)
+						conn.Close()
+						return
 					}
 				}
 			}()
@@ -82,14 +70,12 @@ func handleWebSocket(cm *ConnectionManager, bc *clients.BinanceClient) func(w ht
 }
 
 func main() {
-	cm := NewConnectionManager()
-
 	bc, err := clients.NewBinanceClient()
 	if err != nil {
 		log.Println("Fail to connect Binance")
 	}
 
-	http.HandleFunc("/ws", handleWebSocket(cm, bc))
+	http.HandleFunc("/ws", handleWebSocket(bc))
 	log.Println("Websocket server started on: http://localhost:8888/ws")
 	log.Fatal(http.ListenAndServe(":8888", nil))
 }
