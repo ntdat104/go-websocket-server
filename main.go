@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
 )
@@ -75,7 +76,12 @@ func main() {
 		log.Println("Fail to connect Binance")
 	}
 
+	PORT := os.Getenv("PORT")
+	if PORT == "" {
+		PORT = "8080"
+	}
+
 	http.HandleFunc("/ws", handleWebSocket(bc))
-	log.Println("Websocket server started on: http://localhost:8888/ws")
-	log.Fatal(http.ListenAndServe(":8888", nil))
+	log.Printf("Websocket server started on: http://localhost:%v/ws", PORT)
+	log.Fatal(http.ListenAndServe(":"+PORT, nil))
 }
