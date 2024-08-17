@@ -1,13 +1,16 @@
-FROM golang:alpine3.18
-
+FROM golang:1.19.3-alpine as builder
 WORKDIR /app
+COPY . /app
 
-COPY go.mod go.sum ./
+ENV BUILD_TAG 1.0.0
+ENV GO111MODULE on
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+RUN go mod vendor
+RUN go build -o crudapi main.go
 
-RUN go mod download
-
-COPY . .
-
-RUN CGO_ENABLED=0 GOOS=linux go build -o /main
-
-CMD ["/main"]
+# stage2.1: rebuild
+FROM alpine
+WORKDIR /app
+COPY --from=builder /app/crudapi /app/crudapi.go
+CMD ["./crudapi.go"]
