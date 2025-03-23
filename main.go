@@ -2,22 +2,21 @@ package main
 
 import (
 	"encoding/json"
-	"go-websocket-server/clients"
-	"go-websocket-server/models"
+	"go-websocket-server/client"
+	"go-websocket-server/model"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/websocket"
 )
 
-func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
+func handleWebSocket(bc *client.BinanceClient) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var (
-			upgrader       = websocket.Upgrader{}
-			conn           *websocket.Conn
-			requestMessage models.RequestMessage
+			upgrader = websocket.Upgrader{}
+			conn     *websocket.Conn
+			request  model.BinanceRequest
 		)
 
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -25,11 +24,7 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 			log.Println("Error upgrading to WebSocket:", err)
 			return
 		}
-
-		defer func() {
-			bc.CloseConn(conn)
-			conn.Close()
-		}()
+		defer conn.Close()
 
 		for {
 			_, p, err := conn.ReadMessage()
@@ -42,39 +37,26 @@ func handleWebSocket(bc *clients.BinanceClient) func(w http.ResponseWriter, r *h
 				break
 			}
 
-			if err := json.Unmarshal(p, &requestMessage); err != nil {
+			if err := json.Unmarshal(p, &request); err != nil {
 				log.Println("Error decoding JSON:", err)
 				continue
 			}
 
-			switch {
-			case requestMessage.Type == "CRYPTO":
-				bcRequest := models.BinanceRequest{
-					Method: requestMessage.Method,
-					Params: requestMessage.Params,
-					Id:     rand.Int(),
-				}
-				bc.SendMessage(conn, bcRequest)
+			bcRequest := model.BinanceRequest{
+				Method: request.Method,
+				Params: request.Params,
 			}
+			subscriber := bc.AddSubscriber(conn)
+			subscriber.WriteMessage(bcRequest)
 
-			go func() {
-				for {
-					if err := bc.ReadMessage(); err != nil {
-						log.Println("Error reading message from Binance client:", err)
-						conn.Close()
-						return
-					}
-				}
-			}()
+			defer subscriber.Unsubscribe()
 		}
 	}
 }
 
 func main() {
-	bc, err := clients.NewBinanceClient()
-	if err != nil {
-		log.Println("Fail to connect Binance")
-	}
+	bc := client.NewBinanceClient()
+	defer bc.Close()
 
 	PORT := os.Getenv("PORT")
 	if PORT == "" {

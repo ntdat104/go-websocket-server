@@ -1,4 +1,4 @@
-package models
+package model
 
 type BinanceRequest struct {
 	Method string   `json:"method"`

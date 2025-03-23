@@ -1,4 +1,4 @@
-package data
+package model
 
 type BinanceKlineData struct {
 	ID     int         `json:"id"`

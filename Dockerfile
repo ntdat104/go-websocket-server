@@ -7,10 +7,10 @@ ENV GO111MODULE on
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 RUN go mod vendor
-RUN go build -o crudapi main.go
+RUN go build -o app main.go
 
 # stage2.1: rebuild
 FROM alpine
 WORKDIR /app
-COPY --from=builder /app/crudapi /app/crudapi.go
-CMD ["./crudapi.go"]
+COPY --from=builder /app/app /app/app.go
+CMD ["./app.go"]
